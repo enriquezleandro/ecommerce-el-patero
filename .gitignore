@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Env files (secretos: DB, Mercado Pago, etc.)
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+build/
+
+# Logs
+npm-debug.log*
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings (config de máquina, no de proyecto)
+.claude/settings.local.json

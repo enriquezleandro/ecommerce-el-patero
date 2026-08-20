@@ -1,0 +1,57 @@
+// Prisma schema para "El Patero" (growshop). Los nombres de campo calcan
+// exacto src/lib/types.ts del frontend para que el API devuelva objetos que
+// los componentes ya consumen tal cual, sin capa de traducción.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum ProductCategory {
+  indoor
+  parafernalia
+  fertilizantes
+  macetas
+  indumentaria
+}
+
+model Product {
+  id             String          @id @default(uuid())
+  name           String
+  category       ProductCategory
+  price          Decimal         @db.Decimal(10, 2)
+  originalPrice  Decimal?        @db.Decimal(10, 2)
+  description    String
+  specifications Json?
+  images         String[]
+  stock          Int             @default(0)
+  isNew          Boolean         @default(false)
+  isFeatured     Boolean         @default(false)
+  isOnSale       Boolean         @default(false)
+  rating         Float?
+  sizes          String[]
+  colors         String[]
+  reviews        Review[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([category])
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  userName  String
+  rating    Int
+  comment   String
+  date      DateTime @default(now())
+
+  @@index([productId])
+}
