@@ -10,6 +10,8 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: env.corsOrigin }));
 
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
 app.use('/api/products', productsRoutes);
 app.use('/', paymentsRoutes);
 
