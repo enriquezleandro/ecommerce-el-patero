@@ -5,17 +5,22 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Textarea } from '../components/ui/textarea';
 import { useCart } from '../contexts/CartContext';
+import { useAuth } from '../contexts/AuthContext';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
+import { createReview, getProductById } from '../lib/api';
 import { toast } from 'sonner@2.0.3';
 
 interface ProductDetailPageProps {
   product: Product;
   onNavigate: (page: string) => void;
+  onProductUpdated: (product: Product) => void;
 }
 
-export function ProductDetailPage({ product, onNavigate }: ProductDetailPageProps) {
+export function ProductDetailPage({ product, onNavigate, onProductUpdated }: ProductDetailPageProps) {
   const { addToCart } = useCart();
+  const { isAuthenticated, token } = useAuth();
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [selectedSize, setSelectedSize] = useState<string | undefined>(
@@ -24,6 +29,9 @@ export function ProductDetailPage({ product, onNavigate }: ProductDetailPageProp
   const [selectedColor, setSelectedColor] = useState<string | undefined>(
     product.colors?.[0]
   );
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
   const discount = product.originalPrice
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
@@ -43,6 +51,37 @@ export function ProductDetailPage({ product, onNavigate }: ProductDetailPageProp
 
     addToCart(product, quantity, selectedSize, selectedColor);
     toast.success(`${quantity} ${product.name} agregado${quantity > 1 ? 's' : ''} al carrito`);
+  };
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!isAuthenticated || !token) {
+      toast.error('Iniciá sesión para dejar una reseña');
+      onNavigate('auth');
+      return;
+    }
+
+    if (!reviewComment.trim()) {
+      toast.error('Escribí un comentario antes de enviar');
+      return;
+    }
+
+    setIsSubmittingReview(true);
+    try {
+      await createReview(token, product.id, { rating: reviewRating, comment: reviewComment.trim() });
+      // El producto en memoria (App.tsx) no tiene la reseña nueva ni el
+      // rating recalculado hasta que no se vuelve a pedir del backend.
+      const updated = await getProductById(product.id);
+      onProductUpdated(updated);
+      setReviewComment('');
+      setReviewRating(5);
+      toast.success('¡Gracias por tu reseña!');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No pudimos publicar tu reseña');
+    } finally {
+      setIsSubmittingReview(false);
+    }
   };
 
   return (
@@ -262,6 +301,40 @@ export function ProductDetailPage({ product, onNavigate }: ProductDetailPageProp
           </TabsContent>
 
           <TabsContent value="reviews" className="mt-6">
+            <div className="bg-card border border-border rounded-lg p-6 mb-6">
+              <h3 className="mb-4">Dejar una Reseña</h3>
+              <form onSubmit={handleSubmitReview} className="space-y-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">Tu puntuación</p>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setReviewRating(value)}
+                        aria-label={`${value} estrellas`}
+                      >
+                        <Star
+                          className={`w-6 h-6 ${
+                            value <= reviewRating ? 'fill-accent text-accent' : 'text-muted'
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <Textarea
+                  placeholder="Contanos qué te pareció el producto..."
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  rows={3}
+                />
+                <Button type="submit" disabled={isSubmittingReview}>
+                  {isSubmittingReview ? 'Publicando...' : 'Publicar Reseña'}
+                </Button>
+              </form>
+            </div>
+
             <div className="bg-card border border-border rounded-lg p-6">
               <h3 className="mb-4">Reviews de Clientes</h3>
               {product.reviews && product.reviews.length > 0 ? (

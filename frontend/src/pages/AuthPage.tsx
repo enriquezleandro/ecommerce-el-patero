@@ -23,7 +23,7 @@ export function AuthPage({ onNavigate }: AuthPageProps) {
       toast.success('¡Bienvenido de vuelta!');
       onNavigate('home');
     } catch (error) {
-      toast.error('Credenciales incorrectas. Prueba con: demo@elpatero.com');
+      toast.error(error instanceof Error ? error.message : 'Credenciales incorrectas');
     }
   };
 
@@ -38,7 +38,7 @@ export function AuthPage({ onNavigate }: AuthPageProps) {
       toast.success('¡Cuenta creada exitosamente!');
       onNavigate('home');
     } catch (error) {
-      toast.error('Error al crear la cuenta');
+      toast.error(error instanceof Error ? error.message : 'Error al crear la cuenta');
     }
   };
 
@@ -87,12 +87,6 @@ export function AuthPage({ onNavigate }: AuthPageProps) {
                 <Button type="submit" className="w-full">
                   Iniciar Sesión
                 </Button>
-
-                <div className="bg-muted/50 rounded-lg p-4 text-sm">
-                  <p className="text-muted-foreground mb-2">Usuario demo:</p>
-                  <p>Email: <strong>demo@elpatero.com</strong></p>
-                  <p>Password: <strong>cualquier cosa</strong></p>
-                </div>
               </form>
             </div>
           </TabsContent>

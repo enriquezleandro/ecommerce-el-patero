@@ -90,6 +90,10 @@ export default function App() {
     ? products.find((p) => p.id === selectedProductId)
     : null;
 
+  const handleProductUpdated = (updated: Product) => {
+    setProducts((current) => current.map((p) => (p.id === updated.id ? updated : p)));
+  };
+
   const renderPage = () => {
     switch (currentPage) {
       case 'home':
@@ -98,7 +102,11 @@ export default function App() {
         return <CatalogPage products={products} onNavigate={handleNavigate} searchQuery={searchQuery} categoryFilter={categoryFilter} />;
       case 'product':
         return selectedProduct ? (
-          <ProductDetailPage product={selectedProduct} onNavigate={handleNavigate} />
+          <ProductDetailPage
+            product={selectedProduct}
+            onNavigate={handleNavigate}
+            onProductUpdated={handleProductUpdated}
+          />
         ) : (
           <div className="container mx-auto px-4 py-16 text-center">
             <p>Producto no encontrado</p>

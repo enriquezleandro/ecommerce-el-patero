@@ -55,3 +55,52 @@ model Review {
 
   @@index([productId])
 }
+
+// Usuarios reales (antes mockeados en el AuthContext del frontend). La
+// dirección y el medio de pago guardado se aplanan en columnas propias, igual
+// que el resto del schema, y se re-anidan en el objeto `address` /
+// `savedPaymentMethod` que espera src/lib/types.ts al serializar la respuesta.
+model User {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  passwordHash    String
+  name            String
+  street          String?
+  city            String?
+  province        String?
+  postalCode      String?
+  phone           String?
+  paymentType     String?
+  paymentLastFour String?
+  orders          Order[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+enum OrderStatus {
+  pending
+  processing
+  shipped
+  delivered
+}
+
+model Order {
+  id                 String      @id @default(uuid())
+  userId             String
+  user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Snapshot de los CartItem tal cual los define types.ts: guarda el producto
+  // completo en el momento de la compra, no solo su id, para que el pedido
+  // no cambie si el producto se edita o se borra después.
+  items              Json
+  total              Decimal     @db.Decimal(10, 2)
+  status             OrderStatus @default(pending)
+  shippingStreet     String
+  shippingCity       String
+  shippingProvince   String
+  shippingPostalCode String
+  shippingPhone      String
+  paymentMethod      String
+  createdAt          DateTime    @default(now())
+
+  @@index([userId])
+}

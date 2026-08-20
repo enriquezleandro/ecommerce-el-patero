@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { User, MapPin, CreditCard, Package, LogOut, Edit } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -13,7 +13,7 @@ interface ProfilePageProps {
 }
 
 export function ProfilePage({ onNavigate }: ProfilePageProps) {
-  const { user, logout, updateProfile, orders, isAuthenticated } = useAuth();
+  const { user, logout, updateProfile, orders, isAuthenticated, isLoading } = useAuth();
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileData, setProfileData] = useState({
     name: user?.name || '',
@@ -27,6 +27,27 @@ export function ProfilePage({ onNavigate }: ProfilePageProps) {
     postalCode: user?.address?.postalCode || '',
     phone: user?.address?.phone || '',
   });
+
+  // `user` llega async (se restaura la sesión desde el token guardado), así
+  // que estos formularios se re-sincronizan cuando cambia, no solo al montar.
+  useEffect(() => {
+    setProfileData({ name: user?.name || '', email: user?.email || '' });
+    setAddressData({
+      street: user?.address?.street || '',
+      city: user?.address?.city || '',
+      province: user?.address?.province || '',
+      postalCode: user?.address?.postalCode || '',
+      phone: user?.address?.phone || '',
+    });
+  }, [user]);
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto px-4 py-16 text-center text-muted-foreground">
+        Cargando tu cuenta...
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
@@ -42,18 +63,26 @@ export function ProfilePage({ onNavigate }: ProfilePageProps) {
     );
   }
 
-  const handleProfileUpdate = (e: React.FormEvent) => {
+  const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateProfile(profileData);
-    setIsEditingProfile(false);
-    toast.success('Perfil actualizado');
+    try {
+      await updateProfile(profileData);
+      setIsEditingProfile(false);
+      toast.success('Perfil actualizado');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No pudimos actualizar tu perfil');
+    }
   };
 
-  const handleAddressUpdate = (e: React.FormEvent) => {
+  const handleAddressUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateProfile({ address: { ...addressData } });
-    setIsEditingAddress(false);
-    toast.success('Dirección actualizada');
+    try {
+      await updateProfile({ address: { ...addressData } });
+      setIsEditingAddress(false);
+      toast.success('Dirección actualizada');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No pudimos actualizar la dirección');
+    }
   };
 
   const handleLogout = () => {

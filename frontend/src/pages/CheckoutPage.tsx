@@ -7,7 +7,7 @@ import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
-import { createPreference } from '../lib/api';
+import { createPreference, createOrder } from '../lib/api';
 import { toast } from 'sonner@2.0.3';
 
 interface CheckoutPageProps {
@@ -17,21 +17,65 @@ interface CheckoutPageProps {
 
 type CheckoutStep = 1 | 2 | 3;
 
+// Justo antes de mandar a Mercado Pago se pierde todo el estado de React (la
+// vuelta es un reload completo de la página), así que lo que hace falta para
+// crear el pedido cuando vuelve se guarda acá. El carrito sobrevive solo
+// porque CartContext ya lo persiste en localStorage por su cuenta.
+const PENDING_CHECKOUT_KEY = 'pendingCheckout';
+
+interface PendingCheckout {
+  total: number;
+  shippingAddress: { street: string; city: string; province: string; postalCode: string; phone: string };
+  paymentMethod: string;
+}
+
 export function CheckoutPage({ onNavigate, initialStep }: CheckoutPageProps) {
   const { items, getCartTotal, clearCart } = useCart();
-  const { user, isAuthenticated } = useAuth();
+  const { user, token, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [step, setStep] = useState<CheckoutStep>(initialStep ?? 1);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     // Se llega acá con initialStep=3 cuando Mercado Pago redirige de vuelta
-    // con un pago aprobado (ver App.tsx) — el pago ya se confirmó del lado
-    // de Mercado Pago, así que solo queda vaciar el carrito local.
-    if (initialStep === 3) {
+    // con un pago aprobado (ver App.tsx). El pago ya se confirmó del lado de
+    // Mercado Pago; acá solo falta registrar el pedido y vaciar el carrito.
+    // Se espera a que termine de resolverse la sesión (isAuthLoading) porque
+    // recién ahí sabemos si hay un token válido para mandar con el pedido.
+    if (initialStep !== 3 || isAuthLoading) return;
+
+    const pendingRaw = localStorage.getItem(PENDING_CHECKOUT_KEY);
+    const pending: PendingCheckout | null = pendingRaw ? JSON.parse(pendingRaw) : null;
+    localStorage.removeItem(PENDING_CHECKOUT_KEY);
+
+    // Ojo: no se usa el `items` de useCart() acá. CartProvider es ancestro de
+    // esta página y en el primer montado (que es justo el caso de volver de
+    // Mercado Pago con un reload completo) sus efectos corren después que
+    // los de este componente, así que `items` todavía estaría vacío. Se lee
+    // el carrito directo de localStorage, donde CartContext ya lo persiste.
+    const savedCartRaw = localStorage.getItem('cart');
+    const cartItems = savedCartRaw ? JSON.parse(savedCartRaw) : [];
+
+    async function finishOrder() {
+      if (pending && token && cartItems.length > 0) {
+        try {
+          const order = await createOrder(token, {
+            items: cartItems,
+            total: pending.total,
+            shippingAddress: pending.shippingAddress,
+            paymentMethod: pending.paymentMethod,
+          });
+          setConfirmedOrderId(order.id);
+        } catch {
+          toast.error('El pago se acreditó, pero no pudimos guardar el pedido en tu historial.');
+        }
+      }
       clearCart();
     }
+
+    finishOrder();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isAuthLoading]);
 
   // Shipping info
   const [shippingInfo, setShippingInfo] = useState({
@@ -76,15 +120,26 @@ export function CheckoutPage({ onNavigate, initialStep }: CheckoutPageProps) {
     setStep(2);
   };
 
+  const shippingAddress = {
+    street: shippingInfo.street,
+    city: shippingInfo.city,
+    province: shippingInfo.province,
+    postalCode: shippingInfo.postalCode,
+    phone: shippingInfo.phone,
+  };
+
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (paymentMethod === 'mercadopago') {
       setProcessingPayment(true);
       try {
+        const pending: PendingCheckout = { total, shippingAddress, paymentMethod: 'Mercado Pago' };
+        localStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(pending));
         const { init_point, sandbox_init_point } = await createPreference(items);
         window.location.href = init_point || sandbox_init_point;
       } catch {
+        localStorage.removeItem(PENDING_CHECKOUT_KEY);
         toast.error('No pudimos iniciar el pago con Mercado Pago. Intentá de nuevo.');
         setProcessingPayment(false);
       }
@@ -92,9 +147,25 @@ export function CheckoutPage({ onNavigate, initialStep }: CheckoutPageProps) {
     }
 
     // Tarjeta de crédito/débito: no hay procesador real integrado todavía,
-    // se mantiene la simulación existente.
-    setStep(3);
-    setTimeout(() => {
+    // se mantiene la simulación existente, pero el pedido que queda
+    // registrado en el perfil ya es real.
+    setProcessingPayment(true);
+    setTimeout(async () => {
+      if (token) {
+        try {
+          const order = await createOrder(token, {
+            items,
+            total,
+            shippingAddress,
+            paymentMethod: paymentMethod === 'credit' ? 'Tarjeta de Crédito' : 'Tarjeta de Débito',
+          });
+          setConfirmedOrderId(order.id);
+        } catch {
+          toast.error('No pudimos guardar el pedido en tu historial, pero el pago simulado se completó.');
+        }
+      }
+      setProcessingPayment(false);
+      setStep(3);
       clearCart();
       toast.success('¡Pedido realizado con éxito!');
     }, 1000);
@@ -346,7 +417,9 @@ export function CheckoutPage({ onNavigate, initialStep }: CheckoutPageProps) {
               </p>
               <div className="bg-muted/50 rounded-lg p-4 mb-8">
                 <p className="text-sm text-muted-foreground mb-2">Número de Pedido</p>
-                <p className="text-2xl text-primary">#{Date.now().toString().slice(-8)}</p>
+                <p className="text-2xl text-primary">
+                  #{(confirmedOrderId || Date.now().toString()).slice(-8)}
+                </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Button onClick={() => onNavigate('profile')}>
