@@ -107,7 +107,11 @@ export async function createReview(
   return parseOrThrow(res, 'No pudimos publicar tu reseña');
 }
 
-export async function createPreference(items: CartItem[], shippingCost = 0): Promise<CreatePreferenceResponse> {
+export async function createPreference(
+  items: CartItem[],
+  shippingCost = 0,
+  orderId?: string
+): Promise<CreatePreferenceResponse> {
   const body = {
     items: items.map((item) => ({
       id: item.product.id,
@@ -116,6 +120,7 @@ export async function createPreference(items: CartItem[], shippingCost = 0): Pro
       unit_price: item.product.price,
     })),
     shippingCost,
+    orderId,
   };
 
   const res = await fetch(`${API_URL}/create-preference`, {

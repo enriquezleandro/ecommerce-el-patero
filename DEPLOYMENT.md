@@ -74,20 +74,25 @@ crear la preferencia de pago en el checkout.
 9. **Rol admin**: `User.isAdmin`. Antes de esto, crear/editar/borrar
    productos era público (cualquiera con la URL podía vaciar el catálogo).
    Ahora esas rutas exigen estar logueado **y** tener `isAdmin: true`.
+10. **Webhook de Mercado Pago**: el checkout ahora crea el `Order` (estado
+    `pending`) **antes** de redirigir a pagar, con `external_reference`
+    = id del pedido. `POST /webhooks/mercadopago` recibe la notificación de
+    MP, valida su firma (HMAC-SHA256 con `MP_WEBHOOK_SECRET`, esquema oficial
+    de MP con `x-signature`/`x-request-id`), busca el pago real vía la API de
+    MP y recién ahí marca el pedido como `processing` (aprobado) o
+    `cancelled` (rechazado). El navegador del cliente ya no decide nunca el
+    estado del pedido — solo el webhook. También se reactivó `auto_return`
+    en la preferencia (estaba desactivado porque `FRONTEND_URL` era
+    `localhost`).
 
 ## Pendiente
 
-- **Webhook de Mercado Pago**: hoy el pedido se guarda cuando MP redirige con
-  `?checkout=success`, sin confirmación server-to-server. Falta el endpoint
-  que reciba la notificación de pago de MP y marque el pedido como pagado de
-  verdad. Bloqueado por ahora: se está esperando acceso a las credenciales de
-  prueba (`TEST-...`) de la cuenta de Mercado Pago usada.
-- Reactivar `auto_return` en la preferencia de pago (se desactivó porque
-  `FRONTEND_URL` era `localhost`; ya no debería hacer falta).
 - No hay panel de administración en el frontend — crear/editar productos por
   ahora solo se puede hacer pegándole directo a la API con un token de admin.
 - El botón "Ver Detalles" de un pedido en el perfil no tiene vista asociada.
-- No hay forma de cambiar el estado de un pedido (`pending → shipped → ...`).
+- No hay forma manual de cambiar el estado de un pedido más allá de lo que
+  hace el webhook (`shipped`/`delivered` quedarían para un panel admin
+  futuro).
 
 ## Variables de entorno
 
@@ -96,7 +101,7 @@ dashboard de Render/Vercel (producción). Ver `backend/.env.example` y
 `frontend/.env.example` para la lista completa con comentarios.
 
 **Backend (Render):** `DATABASE_URL`, `DIRECT_URL`, `MP_ACCESS_TOKEN`,
-`JWT_SECRET`, `FRONTEND_URL`, `CORS_ORIGIN`.
+`MP_WEBHOOK_SECRET`, `JWT_SECRET`, `FRONTEND_URL`, `CORS_ORIGIN`, `BACKEND_URL`.
 
 **Frontend (Vercel):** `VITE_API_URL`.
 

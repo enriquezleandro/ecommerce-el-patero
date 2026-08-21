@@ -63,7 +63,7 @@ export interface Order {
   userId: string;
   items: CartItem[];
   total: number;
-  status: 'pending' | 'processing' | 'shipped' | 'delivered';
+  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   shippingAddress: {
     street: string;
     city: string;

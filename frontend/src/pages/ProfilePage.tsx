@@ -99,6 +99,8 @@ export function ProfilePage({ onNavigate }: ProfilePageProps) {
         return 'bg-primary text-primary-foreground';
       case 'processing':
         return 'bg-accent text-accent-foreground';
+      case 'cancelled':
+        return 'bg-destructive text-destructive-foreground';
       default:
         return 'bg-muted text-muted-foreground';
     }
@@ -112,6 +114,8 @@ export function ProfilePage({ onNavigate }: ProfilePageProps) {
         return 'En camino';
       case 'processing':
         return 'Procesando';
+      case 'cancelled':
+        return 'Cancelado';
       default:
         return 'Pendiente';
     }

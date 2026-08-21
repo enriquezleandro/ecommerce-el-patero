@@ -17,65 +17,41 @@ interface CheckoutPageProps {
 
 type CheckoutStep = 1 | 2 | 3;
 
-// Justo antes de mandar a Mercado Pago se pierde todo el estado de React (la
-// vuelta es un reload completo de la página), así que lo que hace falta para
-// crear el pedido cuando vuelve se guarda acá. El carrito sobrevive solo
-// porque CartContext ya lo persiste en localStorage por su cuenta.
-const PENDING_CHECKOUT_KEY = 'pendingCheckout';
-
-interface PendingCheckout {
-  total: number;
-  shippingAddress: { street: string; city: string; province: string; postalCode: string; phone: string };
-  paymentMethod: string;
-}
+// El pedido para Mercado Pago se crea ANTES de redirigir (no cuando vuelve):
+// así el webhook (ver backend/src/controllers/payments.controller.js) es la
+// única fuente de verdad de si se pagó o no, en vez de confiar en que el
+// navegador vuelva. Acá solo se guarda el id para poder mostrarlo en la
+// pantalla de confirmación después del reload que hace MP al volver.
+const LAST_ORDER_ID_KEY = 'lastOrderId';
 
 export function CheckoutPage({ onNavigate, initialStep }: CheckoutPageProps) {
   const { items, getCartTotal, clearCart } = useCart();
-  const { user, token, isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { user, token, isAuthenticated } = useAuth();
   const [step, setStep] = useState<CheckoutStep>(initialStep ?? 1);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     // Se llega acá con initialStep=3 cuando Mercado Pago redirige de vuelta
-    // con un pago aprobado (ver App.tsx). El pago ya se confirmó del lado de
-    // Mercado Pago; acá solo falta registrar el pedido y vaciar el carrito.
-    // Se espera a que termine de resolverse la sesión (isAuthLoading) porque
-    // recién ahí sabemos si hay un token válido para mandar con el pedido.
-    if (initialStep !== 3 || isAuthLoading) return;
+    // (ver App.tsx). El pedido ya existe desde antes de ir a pagar y el
+    // webhook es quien lo va a marcar como pagado — acá solo queda mostrar
+    // el número de pedido guardado y vaciar el carrito.
+    if (initialStep !== 3) return;
 
-    const pendingRaw = localStorage.getItem(PENDING_CHECKOUT_KEY);
-    const pending: PendingCheckout | null = pendingRaw ? JSON.parse(pendingRaw) : null;
-    localStorage.removeItem(PENDING_CHECKOUT_KEY);
-
-    // Ojo: no se usa el `items` de useCart() acá. CartProvider es ancestro de
-    // esta página y en el primer montado (que es justo el caso de volver de
-    // Mercado Pago con un reload completo) sus efectos corren después que
-    // los de este componente, así que `items` todavía estaría vacío. Se lee
-    // el carrito directo de localStorage, donde CartContext ya lo persiste.
-    const savedCartRaw = localStorage.getItem('cart');
-    const cartItems = savedCartRaw ? JSON.parse(savedCartRaw) : [];
-
-    async function finishOrder() {
-      if (pending && token && cartItems.length > 0) {
-        try {
-          const order = await createOrder(token, {
-            items: cartItems,
-            total: pending.total,
-            shippingAddress: pending.shippingAddress,
-            paymentMethod: pending.paymentMethod,
-          });
-          setConfirmedOrderId(order.id);
-        } catch {
-          toast.error('El pago se acreditó, pero no pudimos guardar el pedido en tu historial.');
-        }
-      }
-      clearCart();
+    const lastOrderId = localStorage.getItem(LAST_ORDER_ID_KEY);
+    if (lastOrderId) {
+      setConfirmedOrderId(lastOrderId);
+      localStorage.removeItem(LAST_ORDER_ID_KEY);
     }
 
-    finishOrder();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthLoading]);
+    // Se borra la key de localStorage directo, no clearCart() del contexto:
+    // este es el primer montado de la página (volver de MP es un reload
+    // completo), y el efecto de CartProvider que carga el carrito desde
+    // localStorage corre DESPUÉS que este por ser ancestro — si solo
+    // tocáramos el estado de React acá, ese efecto posterior pisaría el
+    // carrito vacío con el valor viejo que todavía sigue en localStorage.
+    localStorage.removeItem('cart');
+  }, [initialStep]);
 
   // Shipping info
   const [shippingInfo, setShippingInfo] = useState({
@@ -132,14 +108,23 @@ export function CheckoutPage({ onNavigate, initialStep }: CheckoutPageProps) {
     e.preventDefault();
 
     if (paymentMethod === 'mercadopago') {
+      if (!token) {
+        toast.error('Por favor inicia sesión para continuar');
+        onNavigate('auth');
+        return;
+      }
+
       setProcessingPayment(true);
       try {
-        const pending: PendingCheckout = { total, shippingAddress, paymentMethod: 'Mercado Pago' };
-        localStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(pending));
-        const { init_point, sandbox_init_point } = await createPreference(items);
+        // El pedido se crea ANTES de ir a pagar, con estado "pending": es el
+        // webhook el que después lo confirma o lo cancela, nunca este código.
+        const order = await createOrder(token, { items, total, shippingAddress, paymentMethod: 'Mercado Pago' });
+        localStorage.setItem(LAST_ORDER_ID_KEY, order.id);
+
+        const { init_point, sandbox_init_point } = await createPreference(items, shipping, order.id);
         window.location.href = init_point || sandbox_init_point;
       } catch {
-        localStorage.removeItem(PENDING_CHECKOUT_KEY);
+        localStorage.removeItem(LAST_ORDER_ID_KEY);
         toast.error('No pudimos iniciar el pago con Mercado Pago. Intentá de nuevo.');
         setProcessingPayment(false);
       }

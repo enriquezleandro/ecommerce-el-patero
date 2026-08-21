@@ -83,6 +83,7 @@ enum OrderStatus {
   processing
   shipped
   delivered
+  cancelled
 }
 
 model Order {
@@ -94,6 +95,10 @@ model Order {
   // no cambie si el producto se edita o se borra después.
   items              Json
   total              Decimal     @db.Decimal(10, 2)
+  // Solo el webhook de Mercado Pago (o un admin) puede tocar este campo
+  // después de creado el pedido — nunca el cliente directamente. Arranca en
+  // "pending" y el webhook lo pasa a "processing" (pago aprobado) o
+  // "cancelled" (rechazado) según lo que confirme la propia Mercado Pago.
   status             OrderStatus @default(pending)
   shippingStreet     String
   shippingCity       String
@@ -101,6 +106,10 @@ model Order {
   shippingPostalCode String
   shippingPhone      String
   paymentMethod      String
+  // Id del pago en Mercado Pago que confirmó (o rechazó) este pedido; lo
+  // completa el webhook. Null para pedidos con tarjeta simulada o mientras
+  // el pago de MP sigue sin resolverse.
+  mpPaymentId        String?     @unique
   createdAt          DateTime    @default(now())
 
   @@index([userId])

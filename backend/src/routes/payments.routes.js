@@ -7,4 +7,9 @@ const router = Router();
 // consumía el frontend original: POST /create-preference.
 router.post('/create-preference', controller.createPreference);
 
+// Mercado Pago le pega a esto directo (no pasa por el frontend). La URL
+// completa se configura en el panel de MP y también se manda por
+// notification_url al crear cada preferencia.
+router.post('/webhooks/mercadopago', controller.handleWebhook);
+
 module.exports = router;
